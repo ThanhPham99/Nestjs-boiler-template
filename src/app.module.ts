@@ -8,6 +8,7 @@ import { PassportModule } from '@nestjs/passport';
 import { LoggerModule } from 'nestjs-pino';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { UserModule } from './modules/user/user.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { APP_GUARD } from '@nestjs/core';
       ],
     }),
     DatabaseModule,
+    UserModule,
   ],
   controllers: [],
   providers: [

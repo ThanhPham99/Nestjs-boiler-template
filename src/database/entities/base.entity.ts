@@ -1,14 +1,14 @@
-import { PrimaryKey, Property } from '@mikro-orm/core';
+import { PrimaryKey, Property, Opt } from '@mikro-orm/core';
 
 export abstract class BaseEntity<T> {
   @PrimaryKey()
   id!: number;
 
   @Property({ hidden: true, defaultRaw: 'now()' })
-  created_at = new Date();
+  created_at: Date & Opt = new Date();
 
   @Property({ hidden: true, defaultRaw: 'now()', onUpdate: () => new Date() })
-  updated_at = new Date();
+  updated_at: Date & Opt = new Date();
 
   constructor() {}
 
