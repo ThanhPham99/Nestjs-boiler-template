@@ -8,49 +8,73 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
+
+type ExceptionResponseBody = {
+  message?: unknown;
+};
+
+type ExceptionResponse = string | ExceptionResponseBody;
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
-  catch(exception: unknown, host: ArgumentsHost) {
-    // this.logger.log(exception);
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const context = host.switchToHttp();
+    const response = context.getResponse<Response>();
+    const request = context.getRequest<Request>();
 
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const exceptionResponse: any =
+    const exception_response: ExceptionResponse =
       exception instanceof HttpException
         ? exception.getResponse()
         : { message: Message.ERROR };
 
-    let errorDetails = null;
-    let message = exceptionResponse.message || Message.ERROR;
-
-    // Xử lý Validation Error
-    if (status === HttpStatus.BAD_REQUEST) {
-      // Kiểm tra xem message có phải là cấu trúc lỗi validation custom của mình không
-      // Vì ở main.ts ta đã trả về object/array trong BadRequestException
-      message = Message.VALIDATION_ERROR;
-      errorDetails = exceptionResponse.message;
+    if (!(exception instanceof HttpException)) {
+      this.logger.error(exception);
     }
+
+    const error_details =
+      status === HttpStatus.BAD_REQUEST
+        ? this.extractMessage(exception_response)
+        : null;
+    const message =
+      status === HttpStatus.BAD_REQUEST
+        ? Message.VALIDATION_ERROR
+        : this.toErrorCode(this.extractMessage(exception_response));
 
     response.locals.status = message;
 
-    const errorResponse: ApiResponse<null> = {
-      errorCode: message,
+    const error_response: ApiResponse<null> = {
+      error_code: message,
+      message,
       data: null,
-      errors: errorDetails, // Lúc này errorDetails sẽ là Array các Object chi tiết
+      errors: error_details,
       timestamp: new Date().toISOString(),
       path: request.url,
     };
 
-    response.status(200).json(errorResponse);
+    response.status(HttpStatus.OK).json(error_response);
+  }
+
+  private extractMessage(exception_response: ExceptionResponse): unknown {
+    if (typeof exception_response === 'string') {
+      return exception_response;
+    }
+
+    return exception_response.message ?? Message.ERROR;
+  }
+
+  private toErrorCode(message: unknown): string {
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+
+    return Message.ERROR;
   }
 }

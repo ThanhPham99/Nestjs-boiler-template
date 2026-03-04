@@ -3,12 +3,25 @@ import KeyvRedis from '@keyv/redis';
 import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { LoggerModule } from 'nestjs-pino';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
 import { UserModule } from './modules/user/user.module';
+
+function buildRedisUrl(config_service: ConfigService): string {
+  const host = config_service.get<string>('REDIS_HOST');
+  const port = config_service.get<string>('REDIS_PORT');
+  const db = config_service.get<string>('REDIS_DB', '0');
+  const password = config_service.get<string>('REDIS_PASSWORD');
+
+  if (password) {
+    return `redis://:${encodeURIComponent(password)}@${host}:${port}/${db}`;
+  }
+
+  return `redis://${host}:${port}/${db}`;
+}
 
 @Module({
   imports: [
@@ -24,13 +37,26 @@ import { UserModule } from './modules/user/user.module';
     LoggerModule.forRoot({
       pinoHttp: {
         transport: {
-          target: 'pino-pretty',
-          options: {
-            colorize: true,
-            translateTime: 'SYS:standard',
-            ignore: 'pid,hostname',
-            singleLine: false,
-          },
+          targets: [
+            {
+              target: 'pino-pretty',
+              options: {
+                colorize: true,
+                translateTime: 'SYS:standard',
+                ignore: 'pid,hostname',
+                singleLine: false,
+              },
+            },
+            {
+              target: 'pino-roll',
+              options: {
+                file: './logs/app.log',
+                frequency: 'hourly',
+                dateFormat: 'yyyy-MM-dd-HH',
+                mkdir: true,
+              },
+            },
+          ],
         },
         // We can also redact parts of the body
         redact: [
@@ -39,9 +65,17 @@ import { UserModule } from './modules/user/user.module';
           'req.body.password',
           'req.body.newPassword',
         ],
-        customProps: (req: any, res: any) => ({
-          errorCode: res.locals.status,
-        }),
+        customProps: (_req, res) => {
+          const response = res as {
+            locals?: {
+              status?: string;
+            };
+          };
+
+          return {
+            error_code: response.locals?.status,
+          };
+        },
       },
     }),
     PassportModule,
@@ -51,25 +85,14 @@ import { UserModule } from './modules/user/user.module';
     }),
     CacheModule.registerAsync({
       isGlobal: true,
-      inject: [ConfigService], // Inject the ConfigService
-      useFactory: async (configService: ConfigService) => {
-        return {
-          stores: [
-            new KeyvRedis(
-              `redis://:${configService.get<string>(
-                'REDIS_PASSWORD',
-              )}@${configService.get<string>(
-                'REDIS_HOST',
-              )}:${configService.get<string>(
-                'REDIS_PORT',
-              )}/${configService.get<string>('REDIS_DB')}`,
-              {
-                namespace: 'cache',
-              },
-            ),
-          ],
-        };
-      },
+      inject: [ConfigService],
+      useFactory: (config_service: ConfigService) => ({
+        stores: [
+          new KeyvRedis(buildRedisUrl(config_service), {
+            namespace: 'cache',
+          }),
+        ],
+      }),
     }),
     ThrottlerModule.forRoot({
       throttlers: [

@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { UserService } from './user.service';
@@ -28,17 +29,20 @@ export class UserController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.user_service.findOne(+id);
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.user_service.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() update_user_dto: UpdateUserDto) {
-    return this.user_service.update(+id, update_user_dto);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() update_user_dto: UpdateUserDto,
+  ) {
+    return this.user_service.update(id, update_user_dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.user_service.remove(+id);
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.user_service.remove(id);
   }
 }

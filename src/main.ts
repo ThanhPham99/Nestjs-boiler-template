@@ -18,6 +18,29 @@ import helmet from 'helmet';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
+interface ValidationErrorDetail {
+  field: string;
+  value: unknown;
+  constraints: string[];
+  children?: ValidationErrorDetail[];
+}
+
+function formatValidationErrors(
+  validation_errors: ValidationError[],
+): ValidationErrorDetail[] {
+  return validation_errors.map((validation_error) => ({
+    field: validation_error.property,
+    value: validation_error.value,
+    constraints: validation_error.constraints
+      ? Object.values(validation_error.constraints)
+      : [],
+    children:
+      validation_error.children && validation_error.children.length > 0
+        ? formatValidationErrors(validation_error.children)
+        : undefined,
+  }));
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
@@ -28,12 +51,11 @@ async function bootstrap() {
     type: VersioningType.URI,
     defaultVersion: '1',
   });
-  app.setGlobalPrefix('app');
 
-  const CONFIG_SERVICE = app.get(ConfigService);
+  const config_service = app.get(ConfigService);
 
   // Sync database
-  if (CONFIG_SERVICE.get<boolean>('DATABASE_SYNC', false)) {
+  if (config_service.get<boolean>('DATABASE_SYNC', false)) {
     const orm = app.get(MikroORM);
     await orm.schema.updateSchema({
       safe: true,
@@ -44,52 +66,35 @@ async function bootstrap() {
 
   // Middlewares
   app.enableCors({
-    origin: CONFIG_SERVICE.get<string>('CORS_ORIGIN'),
+    origin: config_service.get<string>('CORS_ORIGIN'),
     credentials: true,
   });
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(compression());
   app.use(new TransactionMiddleware().use);
-  app.use;
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      // forbidNonWhitelisted: true,
-      exceptionFactory: (validationErrors: ValidationError[] = []) => {
-        const formatErrors = (errors: ValidationError[]) => {
-          return errors.map((err) => ({
-            field: err.property, // Tên trường bị lỗi (vd: email)
-            value: err.value, // Giá trị người dùng nhập (Tùy chọn, cân nhắc bảo mật)
-            constraints: err.constraints
-              ? (Object.values(err.constraints) as any)
-              : [], // Chi tiết các lỗi (vd: { isEmail: '...', minLength: '...' })
-            children:
-              err.children && err.children.length > 0
-                ? formatErrors(err.children)
-                : undefined, // Lỗi lồng nhau
-          }));
-        };
-
-        const formattedErrors = formatErrors(validationErrors);
-
-        // Ném ra BadRequestException với cấu trúc lỗi mới
-        return new BadRequestException(formattedErrors);
-      },
+      exceptionFactory: (validation_errors: ValidationError[] = []) =>
+        new BadRequestException(formatValidationErrors(validation_errors)),
     }),
   );
+
   app.useLogger(app.get(PinoLogger));
-  app.useGlobalInterceptors(new TransformInterceptor(new Reflector()));
+  app.useGlobalInterceptors(new TransformInterceptor(app.get(Reflector)));
   app.useGlobalFilters(new HttpExceptionFilter());
+
   // Swagger
   if (process.env.NODE_ENV !== 'production') {
     app.use(
-      ['/app/docs', '/app/docs-json'],
+      ['/docs', '/docs-json'],
       expressBasicAuth({
         challenge: true,
         users: {
-          [CONFIG_SERVICE.getOrThrow<string>('SWAGGER_USERNAME')]:
-            CONFIG_SERVICE.getOrThrow<string>('SWAGGER_PASSWORD'),
+          [config_service.getOrThrow<string>('SWAGGER_USERNAME')]:
+            config_service.getOrThrow<string>('SWAGGER_PASSWORD'),
         },
       }),
     );
@@ -101,15 +106,15 @@ async function bootstrap() {
       .addBearerAuth()
       .addSecurityRequirements('bearer')
       .build();
-    const documentFactory = () => SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('app/docs', app, documentFactory);
+    const document_factory = () => SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document_factory);
   }
 
   // Start application on port
+  const port = config_service.get<number>('PORT', 3000);
   const logger = new Logger(bootstrap.name);
-  await app.listen(CONFIG_SERVICE.get<number>('PORT', 3000), () => {
-    logger.log(`Application running on port ${CONFIG_SERVICE.get('PORT')}`);
-  });
+  await app.listen(port);
+  logger.log(`Application running on port ${port}`);
 }
 
 void bootstrap();

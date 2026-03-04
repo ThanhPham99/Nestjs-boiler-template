@@ -10,39 +10,50 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
+type RequestWithAuthContext = Request & {
+  is_authorized: boolean;
+  token?: string;
+  user_data?: unknown;
+};
+
 @Injectable()
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
   constructor(
-    private reflector: Reflector,
-    private configService: ConfigService,
-    private readonly jwtService: JwtService,
+    private readonly reflector: Reflector,
+    private readonly config_service: ConfigService,
+    private readonly jwt_service: JwtService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+    const is_public = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    const request = context.switchToHttp().getRequest();
-    request.authorized = false;
+
+    const request = context.switchToHttp().getRequest<RequestWithAuthContext>();
+    request.is_authorized = false;
+
     const token = this.extractTokenFromHeader(request);
     if (token) {
       try {
         request.token = token;
-        const userData = this.jwtService.verify(token, {
-          secret: this.configService.get('JWT_SECRET'),
+        const user_data = this.jwt_service.verify(token, {
+          secret: this.config_service.get('JWT_SECRET'),
         });
-        request.userData = userData;
-        request.authorized = true;
+        request.user_data = user_data;
+        request.is_authorized = true;
       } catch (error) {
-        this.logger.log(error);
+        this.logger.warn('Invalid authorization token');
       }
     }
-    if (isPublic || request.authorized) return true;
-    return false;
+
+    return is_public || request.is_authorized;
   }
-  private extractTokenFromHeader(request: Request): string | undefined {
+
+  private extractTokenFromHeader(
+    request: RequestWithAuthContext,
+  ): string | undefined {
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
     return type === 'Bearer' ? token : undefined;
   }
