@@ -43,7 +43,7 @@ export class AuthGuard implements CanActivate {
         });
         request.user_data = user_data;
         request.is_authorized = true;
-      } catch (error) {
+      } catch {
         this.logger.warn('Invalid authorization token');
       }
     }

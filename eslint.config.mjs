@@ -1,21 +1,26 @@
 import js from '@eslint/js';
-import json from '@eslint/json';
-import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import eslintConfigPrettier from 'eslint-config-prettier';
 
-export default defineConfig([
+export default tseslint.config(
+  {
+    ignores: ['build/**', 'dist/**', 'node_modules/**'],
+  },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
     files: ['**/*.{js,mjs,cjs,ts,mts,cts}'],
-    plugins: { js },
-    extends: ['google', 'prettier'],
-    languageOptions: { globals: globals.node },
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      '@typescript-eslint/interface-name-prefix': 'off',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    },
   },
-  tseslint.configs.recommended,
-  {
-    files: ['**/*.json'],
-    plugins: { json },
-    language: 'json/json',
-    extends: ['json/recommended'],
-  },
-]);
+  eslintConfigPrettier,
+);

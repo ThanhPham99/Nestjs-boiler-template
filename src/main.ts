@@ -71,7 +71,8 @@ async function bootstrap() {
   });
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(compression());
-  app.use(new TransactionMiddleware().use);
+  const transaction_middleware = new TransactionMiddleware();
+  app.use(transaction_middleware.use.bind(transaction_middleware));
 
   app.useGlobalPipes(
     new ValidationPipe({

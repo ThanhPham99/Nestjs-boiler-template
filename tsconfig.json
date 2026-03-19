@@ -14,11 +14,7 @@
     "outDir": "./build",
     "incremental": true,
     "skipLibCheck": true,
-    "strictNullChecks": true,
-    "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false,
+    "strict": true,
     "baseUrl": "./",
     "paths": {
       "@common/*": ["src/common/*"],
